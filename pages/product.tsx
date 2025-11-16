@@ -55,6 +55,30 @@ function ConsultationForm() {
             return;
         }
 
+
+
+        try {
+            const jwt = await getToken();
+            
+            if (!jwt) {
+                console.error('❌ No JWT token received');
+                setOutput('Authentication required');
+                setLoading(false);
+                return;
+            }
+            
+            console.log('✅ JWT obtained successfully');
+            
+            // ... rest of your code
+            
+        } catch (error) {
+            console.error('❌ Error getting JWT:', error);
+            setOutput('Authentication error: ' + (error instanceof Error ? error.message : String(error)));
+            setLoading(false);
+        }
+
+
+
         const controller = new AbortController();
         let buffer = '';
 

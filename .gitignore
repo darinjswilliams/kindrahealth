@@ -43,3 +43,11 @@ next-env.d.ts
 
 #W Week
 /week1
+
+
+*.__pycache__/
+
+*.pyc
+
+
+

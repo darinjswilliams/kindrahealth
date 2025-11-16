@@ -36,6 +36,9 @@ COPY api/server.py .
 # Copy the Next.js static export from builder stage
 COPY --from=frontend-builder /app/out ./static
 
+# Copy your data_models directory
+COPY data_models ./data_models
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"

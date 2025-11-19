@@ -3,3 +3,6 @@ uvicorn
 openai
 fastapi-clerk-auth
 pydantic[email]
+langgraph
+langchain-openai
+langchain-core

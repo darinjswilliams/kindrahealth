@@ -5,39 +5,51 @@ Production-ready REST API exposing all agents and executors
 
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
-from enum import Enum
+from datetime import datetime
 import asyncio
 import json
 import uuid
-import logging
-from contextlib import asynccontextmanager
 
 from langchain_openai import ChatOpenAI
 
+from monitoring.monitor import monitor_workflow
+
 # Import agent system
 from healthcare_agents import (
-    ClinicalDocumentationAgent,
-    CareCoordinatorAgent,
-    PatientCommunicationAgent,
-    OrchestratorAgent
+    OrchestratorAgent,    
 )
 
-from executor_engine import  HealthcareExecutionEngine
 from workflow_models.models import ConsultationInput
 from workflow.healthcare_workflow import create_healthcare_workflow
+
+from configuration import (
+    lifespan, 
+    logger, 
+    security,
+    execution_engine, 
+    workflow_store
+)
 
 
 from execution_models import (
     WorkflowExecution,
-    ExecutionStatus,
-    ActionExecution
+    ExecutionStatus
 )
 
+from data_models import (
+    ClinicalSummaryResponse,
+    ConsultationCreateRequest,
+    HealthCheckResponse,
+    WorkflowResponse,
+    WorkflowStatusEnum,
+    ActionResponse,
+    ApprovalRequest,
+    DashboardResponse
+
+)
 
 
 # ============================================================================
@@ -215,6 +227,17 @@ async def create_consultation(
         
         # Build response
         response = build_workflow_response(execution, final_state)
+
+
+         # ✅ Start monitoring (runs AFTER response is sent)
+          # 🔥 START MONITORING IN BACKGROUND
+        logger.info(f"🔍 Starting background monitoring for workflow {request.workflow_id}")
+        background_tasks.add_task(
+            monitor_workflow,
+            workflow.workflow_id,
+            workflow_store
+        )
+
         
         logger.info(f"Workflow {execution.workflow_id} created successfully")
         
@@ -382,26 +405,53 @@ async def submit_approval(
         if request.approved:
             logger.info(f"Approving workflow {request.workflow_id}")
             
+             # Apply any modifications if provided
+            if request.modifications:
+                logger.info(f"📝 Applying modifications to workflow {request.workflow_id}")
+                apply_workflow_modifications(workflow, request.modifications)
+
+                
             # Resume workflow execution
             await execution_engine.resume_after_approval(
                 request.workflow_id,
                 request.physician_id
             )
+
+          # 🔥 START MONITORING IN BACKGROUND
+            logger.info(f"🔍 Starting background monitoring for workflow {request.workflow_id}")
+            background_tasks.add_task(
+                monitor_workflow,
+                request.workflow_id,
+                workflow_store
+            )
             
             return {
                 "message": "Workflow approved and resumed",
-                "workflow_id": request.workflow_id
+                "workflow_id": request.workflow_id,
+                "status": "monitoring_started",
+                "monitoring_duration": "30 days"
             }
         else:
-            logger.info(f"Rejecting workflow {request.workflow_id}")
+             logger.info(f"❌ Rejecting workflow {request.workflow_id}")
             
             # Mark as failed
-            workflow.status = ExecutionStatus.FAILED
+             workflow.status = ExecutionStatus.FAILED
             
-            return {
+            # Log rejection reason if provided
+             if request.notes:
+                workflow.alerts.append({
+                    "type": "Workflow Rejected",
+                    "message": request.notes,
+                    "timestamp": datetime.now().isoformat(),
+                    "physician_id": request.physician_id
+                })
+            
+             return {
                 "message": "Workflow rejected",
-                "workflow_id": request.workflow_id
-            }
+                "workflow_id": request.workflow_id,
+                "status": "failed",
+                "reason": request.notes or "Rejected by physician"
+             }
         
     except HTTPException:
         raise
@@ -802,6 +852,47 @@ def build_workflow_response(
         requires_approval=workflow.status == ExecutionStatus.REQUIRES_APPROVAL
     )
 
+def apply_workflow_modifications(workflow: WorkflowExecution, modifications: Dict[str, Any]):
+    """
+    Apply physician modifications to workflow before resuming
+    
+    Args:
+        workflow: The workflow to modify
+        modifications: Dict of modifications to apply
+        
+    Example modifications:
+    {
+        "actions": {
+            "ACT-001": {
+                "description": "Modified lab order description",
+                "priority": "high"
+            }
+        },
+        "notes": "Physician notes about modifications"
+    }
+    """
+    logger.info(f"Applying modifications to workflow {workflow.workflow_id}")
+    
+    # Modify specific actions if provided
+    action_mods = modifications.get("actions", {})
+    for action_id, mods in action_mods.items():
+        action = next((a for a in workflow.actions if a.action_id == action_id), None)
+        if action:
+            if "description" in mods:
+                action.description = mods["description"]
+                logger.info(f"  Updated action {action_id} description")
+            
+            if "priority" in mods:
+                # Update priority logic if needed
+                logger.info(f"  Updated action {action_id} priority to {mods['priority']}")
+    
+    # Store modification notes
+    if modifications.get("notes"):
+        workflow.alerts.append({
+            "type": "Workflow Modified",
+            "message": modifications["notes"],
+            "timestamp": datetime.now().isoformat()
+        })
 
 # ============================================================================
 # ERROR HANDLERS
@@ -815,3 +906,4 @@ async def global_exception_handler(request, exc):
         "error": "Internal server error",
         "detail": str(exc) if app.debug else "An error occurred"
     }
+    # Cleanup tasks here

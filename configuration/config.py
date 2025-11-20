@@ -54,4 +54,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("🔴 Shutting down Healthcare Agent API...")
-    # Cleanup tasks here
+
+
+
+

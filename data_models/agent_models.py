@@ -1,10 +1,11 @@
 # ============================================================================
 # REQUEST/RESPONSE MODELS
 # ============================================================================
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
+from dataclasses import dataclass
 
 
 class ConsultationCreateRequest(BaseModel):
@@ -16,7 +17,7 @@ class ConsultationCreateRequest(BaseModel):
     physician_id: str = Field(..., min_length=1, max_length=50)
     auto_approve: bool = Field(False, description="Auto-approve high-priority actions")
     
-    @validator('date_of_visit')
+    @field_validator('date_of_visit')
     def validate_date(cls, v):
         try:
             datetime.fromisoformat(v)
@@ -136,3 +137,33 @@ class HealthCheckResponse(BaseModel):
     timestamp: datetime
     version: str
     llm_available: bool
+
+# ============================================================================
+# DATA MODELS
+# ============================================================================
+
+class AgentStatus(Enum):
+    """
+    Status of an agent in the workflow
+    """
+    READY = "ready"              # Agent ready to process
+    BUSY = "busy"                # Agent currently processing
+    COMPLETED = "completed"      # Agent finished successfully
+    ERROR = "error"              # Agent encountered error
+    NOT_STARTED = "not_started"  # Agent hasn't been invoked yet
+    WAITING = "waiting"          # Agent waiting for dependencies
+
+
+@dataclass
+class AgentHealthCheck:
+    """
+    Detailed health check result for an agent
+    """
+    agent_name: str
+    status: AgentStatus
+    current_step: str
+    has_errors: bool
+    error_messages: list
+    last_update: Optional[datetime]
+    is_responsive: bool
+    processing_time_seconds: Optional[float]

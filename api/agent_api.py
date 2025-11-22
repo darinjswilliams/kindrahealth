@@ -231,10 +231,10 @@ async def create_consultation(
 
          # ✅ Start monitoring (runs AFTER response is sent)
           # 🔥 START MONITORING IN BACKGROUND
-        logger.info(f"🔍 Starting background monitoring for workflow {request.workflow_id}")
+        logger.info(f"🔍 Starting background monitoring for workflow {execution.workflow_id}")
         background_tasks.add_task(
             monitor_workflow,
-            workflow.workflow_id,
+            execution.workflow_id,
             workflow_store
         )
 

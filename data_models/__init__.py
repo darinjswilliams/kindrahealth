@@ -15,7 +15,9 @@ from .agent_models import (
     ActionResponse,
     ApprovalRequest,
     PatientEmailResponse,
-    DashboardResponse
+    DashboardResponse,
+    AgentHealthCheck,
+    AgentStatus
 )
 
 __all__ =[  "ConsultationRequest", 
@@ -31,5 +33,7 @@ __all__ =[  "ConsultationRequest",
             "ActionResponse",
             "ApprovalRequest",
             "PatientEmailResponse",
-            "DashboardResponse"
+            "DashboardResponse",
+            "AgentHealthCheck",
+            "AgentStatus"
         ]
